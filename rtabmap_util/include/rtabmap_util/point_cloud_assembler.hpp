@@ -36,6 +36,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <message_filters/subscriber.h>
 #include <message_filters/sync_policies/exact_time.h>
+#include <message_filters/sync_policies/approximate_time.h>
 
 #include <rtabmap_conversions/MsgConversion.h>
 #include <rtabmap/core/util3d.h>
@@ -80,9 +81,13 @@ private:
 	rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr cloudPub_;
 
 	typedef message_filters::sync_policies::ExactTime<sensor_msgs::msg::PointCloud2, nav_msgs::msg::Odometry> syncPolicy;
+	typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::msg::PointCloud2, nav_msgs::msg::Odometry> approxPolicy;
 	typedef message_filters::sync_policies::ExactTime<sensor_msgs::msg::PointCloud2, nav_msgs::msg::Odometry, rtabmap_msgs::msg::OdomInfo> syncInfoPolicy;
+	typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::msg::PointCloud2, nav_msgs::msg::Odometry, rtabmap_msgs::msg::OdomInfo> approxInfoPolicy;
 	message_filters::Synchronizer<syncPolicy>* exactSync_;
 	message_filters::Synchronizer<syncInfoPolicy>* exactInfoSync_;
+	message_filters::Synchronizer<approxPolicy>* approxSync_;
+	message_filters::Synchronizer<approxInfoPolicy>* approxInfoSync_;
 	message_filters::Subscriber<sensor_msgs::msg::PointCloud2> syncCloudSub_;
 	message_filters::Subscriber<nav_msgs::msg::Odometry> syncOdomSub_;
 	message_filters::Subscriber<rtabmap_msgs::msg::OdomInfo> syncOdomInfoSub_;
@@ -101,6 +106,7 @@ private:
 	double noiseRadius_;
 	int noiseMinNeighbors_;
 	bool removeZ_;
+	bool useApproxSync_;
 	std::string fixedFrameId_;
 	std::string frameId_;
 	std::shared_ptr<tf2_ros::Buffer> tfBuffer_;

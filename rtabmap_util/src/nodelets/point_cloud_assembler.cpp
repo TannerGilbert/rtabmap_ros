@@ -49,6 +49,8 @@ PointCloudAssembler::PointCloudAssembler(const rclcpp::NodeOptions & options) :
 	callbackCalled_(false),
 	exactSync_(0),
 	exactInfoSync_(0),
+	approxSync_(0),
+	approxInfoSync_(0),
 	maxClouds_(0),
 	skipClouds_(0),
 	cloudsSkipped_(0),
@@ -64,7 +66,8 @@ PointCloudAssembler::PointCloudAssembler(const rclcpp::NodeOptions & options) :
 	noiseMinNeighbors_(5),
 	removeZ_(false),
 	fixedFrameId_("odom"),
-	frameId_("")
+	frameId_(""),
+	useApproxSync_(false)
 {
 	tfBuffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
 	//auto timer_interface = std::make_shared<tf2_ros::CreateTimerROS>(
@@ -78,6 +81,7 @@ PointCloudAssembler::PointCloudAssembler(const rclcpp::NodeOptions & options) :
 	int qos = RMW_QOS_POLICY_RELIABILITY_SYSTEM_DEFAULT;
 	bool subscribeOdomInfo = false;
 
+	useApproxSync_ = this->declare_parameter("approximate_sync", useApproxSync_);
 	topicQueueSize = this->declare_parameter("topic_queue_size", topicQueueSize);
 	int queueSize = this->declare_parameter("queue_size", -1);
 	if(queueSize != -1)
@@ -150,24 +154,50 @@ PointCloudAssembler::PointCloudAssembler(const rclcpp::NodeOptions & options) :
 		syncCloudSub_.subscribe(this, "cloud", rclcpp::QoS(topicQueueSize).reliability((rmw_qos_reliability_policy_t)qos).get_rmw_qos_profile());
 		syncOdomSub_.subscribe(this, "odom", rclcpp::QoS(topicQueueSize).reliability((rmw_qos_reliability_policy_t)qosOdom).get_rmw_qos_profile());
 		syncOdomInfoSub_.subscribe(this, "odom_info", rclcpp::QoS(topicQueueSize).reliability((rmw_qos_reliability_policy_t)qosOdom).get_rmw_qos_profile());
-		exactInfoSync_ = new message_filters::Synchronizer<syncInfoPolicy>(syncInfoPolicy(syncQueueSize), syncCloudSub_, syncOdomSub_, syncOdomInfoSub_);
-		exactInfoSync_->registerCallback(std::bind(&rtabmap_util::PointCloudAssembler::callbackCloudOdomInfo, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
-		subscribedTopicsMsg_ = uFormat("\n%s subscribed to (exact sync):\n   %s,\n   %s",
-							get_name(),
-							syncCloudSub_.getSubscriber()->get_topic_name(),
-							syncOdomSub_.getSubscriber()->get_topic_name(),
-							syncOdomInfoSub_.getSubscriber()->get_topic_name());
+		if (useApproxSync_)
+		{
+			approxInfoSync_ = new message_filters::Synchronizer<approxInfoPolicy>(approxInfoPolicy(syncQueueSize), syncCloudSub_, syncOdomSub_, syncOdomInfoSub_);
+			approxInfoSync_->registerCallback(std::bind(&rtabmap_util::PointCloudAssembler::callbackCloudOdomInfo, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
+			subscribedTopicsMsg_ = uFormat("\n%s subscribed to (approx sync):\n   %s,\n   %s,\n   %s",
+								get_name(),
+								syncCloudSub_.getSubscriber()->get_topic_name(),
+								syncOdomSub_.getSubscriber()->get_topic_name(),
+								syncOdomInfoSub_.getSubscriber()->get_topic_name());
+		} else
+		{
+			exactInfoSync_ = new message_filters::Synchronizer<syncInfoPolicy>(syncInfoPolicy(syncQueueSize), syncCloudSub_, syncOdomSub_, syncOdomInfoSub_);
+			exactInfoSync_->registerCallback(std::bind(&rtabmap_util::PointCloudAssembler::callbackCloudOdomInfo, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
+			subscribedTopicsMsg_ = uFormat("\n%s subscribed to (exact sync):\n   %s,\n   %s",
+								get_name(),
+								syncCloudSub_.getSubscriber()->get_topic_name(),
+								syncOdomSub_.getSubscriber()->get_topic_name(),
+								syncOdomInfoSub_.getSubscriber()->get_topic_name());
+		}
 	}
 	else
 	{
 		syncCloudSub_.subscribe(this, "cloud", rclcpp::QoS(topicQueueSize).reliability((rmw_qos_reliability_policy_t)qos).get_rmw_qos_profile());
 		syncOdomSub_.subscribe(this, "odom", rclcpp::QoS(topicQueueSize).reliability((rmw_qos_reliability_policy_t)qosOdom).get_rmw_qos_profile());
-		exactSync_ = new message_filters::Synchronizer<syncPolicy>(syncPolicy(syncQueueSize), syncCloudSub_, syncOdomSub_);
-		exactSync_->registerCallback(std::bind(&rtabmap_util::PointCloudAssembler::callbackCloudOdom, this, std::placeholders::_1, std::placeholders::_2));
-		subscribedTopicsMsg_ = uFormat("\n%s subscribed to (exact sync):\n   %s,\n   %s",
-							get_name(),
-							syncCloudSub_.getSubscriber()->get_topic_name(),
-							syncOdomSub_.getSubscriber()->get_topic_name());
+
+		if (useApproxSync_)
+		{
+			approxSync_ = new message_filters::Synchronizer<approxPolicy>(approxPolicy(syncQueueSize), syncCloudSub_, syncOdomSub_);
+			approxSync_->registerCallback(std::bind(&rtabmap_util::PointCloudAssembler::callbackCloudOdom, this, std::placeholders::_1, std::placeholders::_2));
+			subscribedTopicsMsg_ = uFormat("\n%s subscribed to (approx sync):\n   %s,\n   %s",
+								get_name(),
+								syncCloudSub_.getSubscriber()->get_topic_name(),
+								syncOdomSub_.getSubscriber()->get_topic_name());
+		}
+		else
+		{
+			exactSync_ = new message_filters::Synchronizer<syncPolicy>(syncPolicy(syncQueueSize), syncCloudSub_, syncOdomSub_);
+			exactSync_->registerCallback(std::bind(&rtabmap_util::PointCloudAssembler::callbackCloudOdom, this, std::placeholders::_1, std::placeholders::_2));
+			subscribedTopicsMsg_ = uFormat("\n%s subscribed to (exact sync):\n   %s,\n   %s",
+								get_name(),
+								syncCloudSub_.getSubscriber()->get_topic_name(),
+								syncOdomSub_.getSubscriber()->get_topic_name());
+		}
+
 	}
 
 	warningThread_ = new std::thread([&](){
@@ -194,6 +224,8 @@ PointCloudAssembler::~PointCloudAssembler()
 {
 	delete exactSync_;
 	delete exactInfoSync_;
+	delete approxSync_;
+	delete approxInfoSync_;
 
 	if(warningThread_)
 	{
